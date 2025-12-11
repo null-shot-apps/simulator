@@ -18,13 +18,34 @@ type Trade = {
   timestamp: Date;
 };
 
+type Payment = {
+  id: number;
+  from: string;
+  to: string;
+  amount: number;
+  currency: string;
+  status: 'pending' | 'processing' | 'completed';
+  timestamp: Date;
+  recipient: string;
+  phone: string;
+};
+
 export default function CryptoSimulator() {
   const [balance, setBalance] = useState(10000);
   const [portfolio, setPortfolio] = useState<{ [key: string]: number }>({});
   const [trades, setTrades] = useState<Trade[]>([]);
-  const [currentView, setCurrentView] = useState<'wallet' | 'trade' | 'lessons'>('wallet');
+  const [currentView, setCurrentView] = useState<'wallet' | 'trade' | 'lessons' | 'payments'>('wallet');
   const [selectedCrypto, setSelectedCrypto] = useState('BTC');
   const [tradeAmount, setTradeAmount] = useState('');
+  
+  // Payment Hub State
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [paymentCurrency, setPaymentCurrency] = useState<'USDC' | 'USDT'>('USDC');
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [recipientName, setRecipientName] = useState('');
+  const [recipientPhone, setRecipientPhone] = useState('');
+  const [recipientCountry, setRecipientCountry] = useState('Kenya');
+  const [processingPayment, setProcessingPayment] = useState(false);
   
   const [lessons] = useState<Lesson[]>([
     {
@@ -50,6 +71,12 @@ export default function CryptoSimulator() {
       title: 'Market Volatility',
       content: 'Crypto prices can change rapidly. This volatility creates opportunities but also risks. Practice with simulated money before using real funds.',
       completed: false
+    },
+    {
+      id: 5,
+      title: 'Cross-Border Payments',
+      content: 'Stablecoins like USDC and USDT enable fast, low-cost international transfers. They can be converted to local mobile money, making remittances easier and cheaper.',
+      completed: false
     }
   ]);
 
@@ -57,7 +84,17 @@ export default function CryptoSimulator() {
     BTC: 45000,
     ETH: 3000,
     SOL: 100,
-    ADA: 0.5
+    ADA: 0.5,
+    USDC: 1,
+    USDT: 1
+  };
+
+  const mobileMoneyRates: { [key: string]: { currency: string; rate: number; symbol: string } } = {
+    Kenya: { currency: 'KES', rate: 130, symbol: 'KSh' },
+    Nigeria: { currency: 'NGN', rate: 750, symbol: '₦' },
+    Ghana: { currency: 'GHS', rate: 12, symbol: 'GH₵' },
+    Uganda: { currency: 'UGX', rate: 3700, symbol: 'USh' },
+    Tanzania: { currency: 'TZS', rate: 2500, symbol: 'TSh' }
   };
 
   const handleTrade = (type: 'buy' | 'sell') => {
@@ -103,6 +140,61 @@ export default function CryptoSimulator() {
     setTradeAmount('');
   };
 
+  const handleSendPayment = () => {
+    const amount = parseFloat(paymentAmount);
+    if (!amount || amount <= 0 || !recipientName || !recipientPhone) {
+      alert('Please fill all fields!');
+      return;
+    }
+
+    const stablecoinBalance = portfolio[paymentCurrency] || 0;
+    if (stablecoinBalance < amount) {
+      alert(`Insufficient ${paymentCurrency} balance! You need to buy some first.`);
+      return;
+    }
+
+    setProcessingPayment(true);
+
+    // Simulate payment processing
+    const newPayment: Payment = {
+      id: payments.length + 1,
+      from: paymentCurrency,
+      to: mobileMoneyRates[recipientCountry].currency,
+      amount,
+      currency: paymentCurrency,
+      status: 'pending',
+      timestamp: new Date(),
+      recipient: recipientName,
+      phone: recipientPhone
+    };
+
+    setPayments([newPayment, ...payments]);
+
+    // Deduct from portfolio
+    setPortfolio({
+      ...portfolio,
+      [paymentCurrency]: stablecoinBalance - amount
+    });
+
+    // Simulate processing stages
+    setTimeout(() => {
+      setPayments(prev => prev.map(p => 
+        p.id === newPayment.id ? { ...p, status: 'processing' } : p
+      ));
+    }, 1000);
+
+    setTimeout(() => {
+      setPayments(prev => prev.map(p => 
+        p.id === newPayment.id ? { ...p, status: 'completed' } : p
+      ));
+      setProcessingPayment(false);
+      setPaymentAmount('');
+      setRecipientName('');
+      setRecipientPhone('');
+      alert(`Payment sent! ${recipientName} will receive ${mobileMoneyRates[recipientCountry].symbol}${(amount * mobileMoneyRates[recipientCountry].rate).toFixed(2)}`);
+    }, 3000);
+  };
+
   const getPortfolioValue = () => {
     return Object.entries(portfolio).reduce((total, [crypto, amount]) => {
       return total + (amount * cryptoPrices[crypto]);
@@ -132,10 +224,10 @@ export default function CryptoSimulator() {
         </div>
 
         {/* Navigation */}
-        <div className="flex gap-2 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-6">
           <button
             onClick={() => setCurrentView('wallet')}
-            className={`flex-1 py-3 px-6 rounded-xl font-semibold transition-all ${
+            className={`py-3 px-4 rounded-xl font-semibold transition-all ${
               currentView === 'wallet'
                 ? 'bg-purple-500 shadow-lg shadow-purple-500/50'
                 : 'bg-white/10 hover:bg-white/20'
@@ -145,7 +237,7 @@ export default function CryptoSimulator() {
           </button>
           <button
             onClick={() => setCurrentView('trade')}
-            className={`flex-1 py-3 px-6 rounded-xl font-semibold transition-all ${
+            className={`py-3 px-4 rounded-xl font-semibold transition-all ${
               currentView === 'trade'
                 ? 'bg-purple-500 shadow-lg shadow-purple-500/50'
                 : 'bg-white/10 hover:bg-white/20'
@@ -154,8 +246,18 @@ export default function CryptoSimulator() {
             📈 Trade
           </button>
           <button
+            onClick={() => setCurrentView('payments')}
+            className={`py-3 px-4 rounded-xl font-semibold transition-all ${
+              currentView === 'payments'
+                ? 'bg-purple-500 shadow-lg shadow-purple-500/50'
+                : 'bg-white/10 hover:bg-white/20'
+            }`}
+          >
+            🌍 Payments
+          </button>
+          <button
             onClick={() => setCurrentView('lessons')}
-            className={`flex-1 py-3 px-6 rounded-xl font-semibold transition-all ${
+            className={`py-3 px-4 rounded-xl font-semibold transition-all ${
               currentView === 'lessons'
                 ? 'bg-purple-500 shadow-lg shadow-purple-500/50'
                 : 'bg-white/10 hover:bg-white/20'
@@ -289,6 +391,183 @@ export default function CryptoSimulator() {
             </div>
           )}
 
+          {currentView === 'payments' && (
+            <div>
+              <h2 className="text-2xl font-bold mb-4">🌍 Cross-Border Payment Hub</h2>
+              <p className="text-purple-200 mb-6">Send USDC/USDT to mobile money instantly</p>
+              
+              {/* Payment Form */}
+              <div className="bg-gradient-to-br from-green-500/20 to-blue-500/20 border border-green-500/30 rounded-xl p-6 mb-6">
+                <h3 className="text-lg font-semibold mb-4">Send Money</h3>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-semibold mb-2">Select Stablecoin</label>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => setPaymentCurrency('USDC')}
+                        className={`flex-1 py-3 px-4 rounded-lg font-semibold transition-all ${
+                          paymentCurrency === 'USDC'
+                            ? 'bg-blue-500 shadow-lg'
+                            : 'bg-white/10 hover:bg-white/20'
+                        }`}
+                      >
+                        USDC
+                        <div className="text-xs mt-1 opacity-80">
+                          Balance: {(portfolio['USDC'] || 0).toFixed(2)}
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => setPaymentCurrency('USDT')}
+                        className={`flex-1 py-3 px-4 rounded-lg font-semibold transition-all ${
+                          paymentCurrency === 'USDT'
+                            ? 'bg-green-500 shadow-lg'
+                            : 'bg-white/10 hover:bg-white/20'
+                        }`}
+                      >
+                        USDT
+                        <div className="text-xs mt-1 opacity-80">
+                          Balance: {(portfolio['USDT'] || 0).toFixed(2)}
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold mb-2">Amount (USD)</label>
+                    <input
+                      type="number"
+                      value={paymentAmount}
+                      onChange={(e) => setPaymentAmount(e.target.value)}
+                      placeholder="0.00"
+                      className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white"
+                      disabled={processingPayment}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold mb-2">Recipient Country</label>
+                    <select
+                      value={recipientCountry}
+                      onChange={(e) => setRecipientCountry(e.target.value)}
+                      className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white"
+                      disabled={processingPayment}
+                    >
+                      {Object.keys(mobileMoneyRates).map((country) => (
+                        <option key={country} value={country} className="bg-purple-900">
+                          {country} ({mobileMoneyRates[country].currency})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold mb-2">Recipient Name</label>
+                    <input
+                      type="text"
+                      value={recipientName}
+                      onChange={(e) => setRecipientName(e.target.value)}
+                      placeholder="John Doe"
+                      className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white"
+                      disabled={processingPayment}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold mb-2">Mobile Money Number</label>
+                    <input
+                      type="tel"
+                      value={recipientPhone}
+                      onChange={(e) => setRecipientPhone(e.target.value)}
+                      placeholder="+254712345678"
+                      className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white"
+                      disabled={processingPayment}
+                    />
+                  </div>
+
+                  {paymentAmount && (
+                    <div className="bg-white/10 rounded-lg p-4">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-sm text-purple-200">You send:</span>
+                        <span className="font-semibold">${parseFloat(paymentAmount).toFixed(2)} {paymentCurrency}</span>
+                      </div>
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-sm text-purple-200">Exchange rate:</span>
+                        <span className="font-semibold">1 USD = {mobileMoneyRates[recipientCountry].symbol}{mobileMoneyRates[recipientCountry].rate}</span>
+                      </div>
+                      <div className="flex justify-between items-center pt-2 border-t border-white/20">
+                        <span className="text-sm text-purple-200">Recipient gets:</span>
+                        <span className="font-bold text-green-400 text-lg">
+                          {mobileMoneyRates[recipientCountry].symbol}{(parseFloat(paymentAmount) * mobileMoneyRates[recipientCountry].rate).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handleSendPayment}
+                    disabled={processingPayment}
+                    className={`w-full py-4 rounded-lg font-bold text-lg transition-all ${
+                      processingPayment
+                        ? 'bg-gray-500 cursor-not-allowed'
+                        : 'bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 shadow-lg'
+                    }`}
+                  >
+                    {processingPayment ? '⏳ Processing...' : '💸 Send Payment'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Payment History */}
+              <div>
+                <h3 className="text-xl font-semibold mb-3">Payment History</h3>
+                {payments.length === 0 ? (
+                  <div className="text-center py-12 bg-white/5 rounded-xl">
+                    <p className="text-purple-200 mb-2">No payments yet</p>
+                    <p className="text-sm text-purple-300">Buy some USDC or USDT first, then send money!</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {payments.map((payment) => (
+                      <div key={payment.id} className="bg-white/5 rounded-lg p-4 border border-white/10">
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <p className="font-semibold">{payment.recipient}</p>
+                            <p className="text-sm text-purple-200">{payment.phone}</p>
+                          </div>
+                          <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                            payment.status === 'completed' ? 'bg-green-500/20 text-green-400' :
+                            payment.status === 'processing' ? 'bg-yellow-500/20 text-yellow-400' :
+                            'bg-blue-500/20 text-blue-400'
+                          }`}>
+                            {payment.status === 'completed' ? '✓ Completed' :
+                             payment.status === 'processing' ? '⏳ Processing' :
+                             '⏱ Pending'}
+                          </div>
+                        </div>
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-purple-200">
+                            ${payment.amount.toFixed(2)} {payment.currency} → {payment.to}
+                          </span>
+                          <span className="text-purple-300">
+                            {payment.timestamp.toLocaleTimeString()}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-6 bg-yellow-500/20 border border-yellow-500/50 rounded-xl p-4">
+                <p className="text-sm">
+                  ⚡ <strong>Fast & Cheap:</strong> Send money across borders in seconds with minimal fees. 
+                  Recipients get mobile money directly to their phones!
+                </p>
+              </div>
+            </div>
+          )}
+
           {currentView === 'lessons' && (
             <div>
               <h2 className="text-2xl font-bold mb-4">Learn Crypto Basics</h2>
@@ -314,4 +593,8 @@ export default function CryptoSimulator() {
     </div>
   );
 }
+
+
+
+
 
